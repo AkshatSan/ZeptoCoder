@@ -198,7 +198,9 @@ def undo_last_commit(root: Path | None = None) -> tuple[bool, str]:
 
     Safety checks:
     1. Inspects commit metadata: only rolls back if '[micro-coder auto-commit]' is present.
-    2. Performs 'git reset --hard HEAD~1' to revert both Git history and disk files.
+    2. Working-tree guard: refuses to run if there are uncommitted changes in other
+       tracked files to prevent 'git reset --hard' from wiping out uncommitted work.
+    3. Performs 'git reset --hard HEAD~1' to revert both Git history and disk files.
 
     Returns:
         (success: bool, message: str)
@@ -207,11 +209,12 @@ def undo_last_commit(root: Path | None = None) -> tuple[bool, str]:
     if not repo_root:
         return False, "Not inside a Git repository."
 
+    repo = git.Repo(repo_root)
     last_commit = get_last_commit_info(repo_root)
     if not last_commit:
         return False, "No commits found to undo."
 
-    # Guard: only undo commits made by micro-coder
+    # Guard 1: only undo commits made by micro-coder
     if not last_commit["is_ai"]:
         return (
             False,
@@ -220,7 +223,16 @@ def undo_last_commit(root: Path | None = None) -> tuple[bool, str]:
             "Manual developer commits cannot be undone automatically.",
         )
 
-    repo = git.Repo(repo_root)
+    # Guard 2: check if working tree has dirty modifications
+    status = get_repo_status(repo_root)
+    if status["modified"] or status["staged"]:
+        dirty_files = ", ".join(status["modified"] + status["staged"])
+        return (
+            False,
+            f"Safety block: You have uncommitted changes in your workspace ({dirty_files}). "
+            "Running /undo would discard these changes. Please commit or stash them first.",
+        )
+
     try:
         repo.git.reset("--hard", "HEAD~1")
         return (
