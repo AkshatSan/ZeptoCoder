@@ -1,11 +1,14 @@
 import sys
 from rich.console import Console
 from rich.table import Table
+
 from micro_coder.llm import stream_chat
 from micro_coder.context import ContextManager
 from micro_coder.prompts import SYSTEM_PROMPT
 from micro_coder.parser import parse_edit_blocks
 from micro_coder.patcher import apply_blocks_to_disk
+from micro_coder.terminal import TerminalSession
+from micro_coder.repo import auto_commit, undo_last_commit, display_diff
 
 console = Console()
 
@@ -32,14 +35,24 @@ def main():
     ctx = ContextManager()
     console.print("[bold green]micro-coder[/bold green] [dim](v0.1.0)[/dim] - Ready.")
     console.print(f"[dim]Project Root: {ctx.root}[/dim]")
-    console.print("[dim]Commands: /add <file>, /drop <file>, /tokens, /clear, /exit, /help[/dim]\n")
+    console.print("[dim]Commands: /add, /drop, /tokens, /diff, /undo, /clear, /exit, /help[/dim]\n")
 
-    # Chat history stores only conversational turns (user & assistant)
+    # Initialize professional prompt_toolkit terminal session with autocompletion & history
+    terminal = TerminalSession(
+        root=ctx.root,
+        get_active_files=lambda: [str(p) for p in ctx.active_files],
+    )
+
+    # Chat history stores conversational turns (user & assistant)
     chat_history: list[dict] = []
 
     while True:
         try:
-            user_input = console.input("[bold blue]you > [/bold blue]").strip()
+            user_input = terminal.get_input()
+
+            # None indicates user pressed Ctrl+C to cancel current line
+            if user_input is None:
+                continue
 
             if not user_input:
                 continue
@@ -73,6 +86,20 @@ def main():
                 display_tokens(ctx, chat_history)
                 continue
 
+            elif user_input.lower().startswith("/diff"):
+                parts = user_input.split(maxsplit=1)
+                target = parts[1].strip().lower() if len(parts) > 1 else None
+                display_diff(root=ctx.root, target=target, console=console)
+                continue
+
+            elif user_input.lower() == "/undo":
+                success, msg = undo_last_commit(root=ctx.root)
+                if success:
+                    console.print(f"[bold green]✓ {msg}[/bold green]")
+                else:
+                    console.print(f"[bold yellow]! {msg}[/bold yellow]")
+                continue
+
             elif user_input.lower() == "/clear":
                 chat_history.clear()
                 console.print("[yellow]Chat history cleared (active files kept in context).[/yellow]")
@@ -80,9 +107,11 @@ def main():
 
             elif user_input.lower() == "/help":
                 console.print("[bold cyan]Available Commands:[/bold cyan]")
-                console.print("  [bold]/add <path>[/bold]   - Add a file to active context")
-                console.print("  [bold]/drop <path>[/bold]  - Remove a file from active context")
+                console.print("  [bold]/add <path>[/bold]   - Add a file to active context (with tab-completion)")
+                console.print("  [bold]/drop <path>[/bold]  - Remove a file from context (shows active files)")
                 console.print("  [bold]/tokens[/bold]       - View token budget breakdown")
+                console.print("  [bold]/diff[/bold]         - View colorized git diff (or /diff commit)")
+                console.print("  [bold]/undo[/bold]         - Roll back the last AI commit and restore files")
                 console.print("  [bold]/clear[/bold]        - Reset conversation memory")
                 console.print("  [bold]/exit[/bold]         - Exit the assistant")
                 continue
@@ -120,15 +149,29 @@ def main():
             if blocks:
                 console.print(f"[bold cyan]Detected {len(blocks)} edit block(s). Applying to disk...[/bold cyan]")
                 results = apply_blocks_to_disk(blocks, root=ctx.root)
+                successful_files = []
+
                 for path, success, msg in results:
                     if success:
                         console.print(f"  [bold green]✓[/bold green] {path}: {msg}")
+                        successful_files.append(path)
                     else:
                         console.print(f"  [bold red]✗[/bold red] {path}: {msg}")
 
-        except KeyboardInterrupt:
-            console.print("\n[yellow][Interrupted][/yellow]\n")
-            continue
+                # 6. Auto-Commit Clean Modifications to Git
+                if successful_files:
+                    console.print("[dim]Generating commit message and auto-committing...[/dim]")
+                    committed, commit_sha, commit_msg = auto_commit(
+                        root=ctx.root,
+                        files=successful_files,
+                    )
+                    if committed:
+                        console.print(
+                            f"  [bold green]Commit {commit_sha}:[/bold green] [dim]{commit_msg}[/dim]"
+                        )
+                    else:
+                        console.print(f"  [dim yellow]Commit skipped: {commit_msg}[/dim yellow]")
+
         except EOFError:
             console.print("\n[yellow]Goodbye![/yellow]")
             break
@@ -137,4 +180,6 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
+
     main()

@@ -1,4 +1,10 @@
-SYSTEM_PROMPT = """You are micro-coder, an expert AI pair programming assistant working directly in the user's terminal and local repository.
+# Dynamically generate markers to prevent VS Code and Git from misinterpreting
+# them as active merge conflicts in the editor.
+SEARCH_MARKER = "<" * 7 + " SEARCH"
+DIVIDER_MARKER = "=" * 7
+REPLACE_MARKER = ">" * 7 + " REPLACE"
+
+SYSTEM_PROMPT = f"""You are micro-coder, an expert AI pair programming assistant working directly in the user's terminal and local repository.
 
 When modifying or creating code:
 1. Output your code changes as SEARCH/REPLACE blocks.
@@ -9,8 +15,12 @@ When modifying or creating code:
 
 Format for code edits:
 path/to/file.py
+{SEARCH_MARKER}
 exact lines of code to replace
+{DIVIDER_MARKER}
 new lines of code
+{REPLACE_MARKER}
 
 If the user asks an informational question or does not ask to modify code, reply normally without SEARCH/REPLACE blocks.
+"""
 """
