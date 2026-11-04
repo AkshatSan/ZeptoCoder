@@ -7,7 +7,9 @@
 > **Current Progress Status**:
 > - ✅ **Week 1 (COMPLETED)**: Environment setup (`uv`), `.env`, dependencies, streaming LLM client (`llm.py`), and REPL (`main.py`).
 > - ✅ **Week 2 (COMPLETED)**: Git Discovery (`repo.py`), File Ingestion (`context.py`), Token Budgeting (`tiktoken`), and Slash Commands (`/add`, `/drop`, `/tokens`, `/clear`).
-> - 🚀 **Week 3 (READY TO START)**: The Edit Engine — SEARCH/REPLACE Block Patcher.
+> - ✅ **Week 3 (COMPLETED)**: The Edit Engine — SEARCH/REPLACE Block Patcher (`parser.py`, `patcher.py`, `prompt.py`).
+> - ✅ **Week 4 (COMPLETED)**: Professional REPL (`prompt_toolkit`), Auto-Git Commits & Undo (`completer.py`, `terminal.py`, `repo.py`, `/diff`, `/undo`).
+> - 🚀 **Week 5 (READY TO START)**: The Agentic Feedback Loop — Linting, Testing & Self-Healing (`ruff`, `pytest`, `ast.parse`).
 
 ---
 

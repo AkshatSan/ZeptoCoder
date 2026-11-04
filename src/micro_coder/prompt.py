@@ -23,4 +23,3 @@ new lines of code
 
 If the user asks an informational question or does not ask to modify code, reply normally without SEARCH/REPLACE blocks.
 """
-"""
