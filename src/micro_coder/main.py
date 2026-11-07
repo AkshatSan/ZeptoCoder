@@ -4,11 +4,13 @@ from rich.table import Table
 
 from micro_coder.llm import stream_chat
 from micro_coder.context import ContextManager
-from micro_coder.prompts import SYSTEM_PROMPT
+from micro_coder.prompt import SYSTEM_PROMPT, format_self_healing_prompt
 from micro_coder.parser import parse_edit_blocks
 from micro_coder.patcher import apply_blocks_to_disk
 from micro_coder.terminal import TerminalSession
 from micro_coder.repo import auto_commit, undo_last_commit, display_diff
+from micro_coder.linter import lint_files
+from micro_coder.tester import run_tests, find_test_files_for
 
 console = Console()
 
@@ -31,6 +33,101 @@ def display_tokens(ctx: ContextManager, messages: list[dict]):
     console.print(table)
 
 
+def verify_and_heal(
+    successful_files: list[str],
+    ctx: ContextManager,
+    chat_history: list[dict],
+    max_attempts: int = 3,
+) -> bool:
+    """
+    Agentic Feedback Loop:
+    1. Validates modified files with fast AST syntax check, Ruff, and Pytest.
+    2. If issues exist, formats a self-healing prompt and prompts the LLM to auto-fix.
+    3. Re-applies fixes and re-tests up to max_attempts.
+    4. Returns True if all checks pass, False if errors remain.
+    """
+    lint_paths = [ctx.root / f for f in successful_files]
+    lint_errors = lint_files(lint_paths)
+
+    test_targets = find_test_files_for(successful_files, root=ctx.root)
+    test_result = run_tests(targets=test_targets, root=ctx.root)
+
+    # Fast path: Edits are clean on the very first try
+    if not lint_errors and test_result.passed:
+        console.print("[bold green]✓ Verification passed: 0 lint errors, tests passing.[/bold green]")
+        return True
+
+    # Feedback loop: Iteratively ask the model to self-heal
+    for attempt in range(1, max_attempts + 1):
+        console.print(
+            f"\n[bold yellow]⚠️ Verification issues detected (Self-Healing Attempt {attempt}/{max_attempts}):[/bold yellow]"
+        )
+        if lint_errors:
+            console.print(f"  [red]• {len(lint_errors)} linter/syntax error(s):[/red]")
+            for err in lint_errors[:3]:
+                console.print(f"    [dim]- {err.format()}[/dim]")
+            if len(lint_errors) > 3:
+                console.print(f"    [dim]... and {len(lint_errors) - 3} more[/dim]")
+
+        if not test_result.passed:
+            console.print(f"  [red]• Test suite failed ({test_result.command})[/red]")
+
+        # Format targeted error-recovery prompt
+        healing_prompt = format_self_healing_prompt(
+            lint_errors=lint_errors,
+            test_result=test_result,
+            attempt=attempt,
+            max_attempts=max_attempts,
+        )
+
+        # Assemble prompt payload
+        healing_payload = [{"role": "system", "content": SYSTEM_PROMPT}]
+        file_context = ctx.format_prompt_context()
+        if file_context:
+            healing_payload.append({"role": "system", "content": file_context})
+        healing_payload.extend(chat_history)
+        healing_payload.append({"role": "user", "content": healing_prompt})
+
+        console.print(f"[bold magenta]micro-coder (healing #{attempt}) > [/bold magenta]", end="")
+        full_response = []
+        for token in stream_chat(messages=healing_payload):
+            print(token, end="", flush=True)
+            full_response.append(token)
+        print("\n")
+
+        healing_text = "".join(full_response)
+        chat_history.append({"role": "user", "content": healing_prompt})
+        chat_history.append({"role": "assistant", "content": healing_text})
+
+        # Apply corrective edit blocks to disk
+        new_blocks = parse_edit_blocks(healing_text)
+        if not new_blocks:
+            console.print("[yellow]No SEARCH/REPLACE blocks found in healing response.[/yellow]")
+            break
+
+        results = apply_blocks_to_disk(new_blocks, root=ctx.root)
+        for path, success, msg in results:
+            if success:
+                console.print(f"  [bold green]✓[/bold green] {path}: {msg}")
+                if path not in successful_files:
+                    successful_files.append(path)
+            else:
+                console.print(f"  [bold red]✗[/bold red] {path}: {msg}")
+
+        # Re-run validation
+        lint_paths = [ctx.root / f for f in successful_files]
+        lint_errors = lint_files(lint_paths)
+        test_targets = find_test_files_for(successful_files, root=ctx.root)
+        test_result = run_tests(targets=test_targets, root=ctx.root)
+
+        if not lint_errors and test_result.passed:
+            console.print(f"[bold green]✓ Self-healing succeeded on attempt {attempt}![/bold green]")
+            return True
+
+    console.print(f"[bold red]✗ Self-healing exhausted ({max_attempts} attempts).[/bold red]")
+    return False
+
+
 def main():
     ctx = ContextManager()
     console.print("[bold green]micro-coder[/bold green] [dim](v0.1.0)[/dim] - Ready.")
@@ -50,7 +147,6 @@ def main():
         try:
             user_input = terminal.get_input()
 
-            # None indicates user pressed Ctrl+C to cancel current line
             if user_input is None:
                 continue
 
@@ -122,12 +218,10 @@ def main():
             # 3. Dynamic Context Assembly
             payload = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-            # Inject active file contents into context
             file_context = ctx.format_prompt_context()
             if file_context:
                 payload.append({"role": "system", "content": file_context})
 
-            # Append conversational history
             payload.extend(chat_history)
 
             # 4. Stream Assistant Response
@@ -138,10 +232,9 @@ def main():
                 print(token, end="", flush=True)
                 full_response.append(token)
 
-            print("\n")  # Newline after stream finishes
+            print("\n")
             response_text = "".join(full_response)
 
-            # Save assistant response to conversation history
             chat_history.append({"role": "assistant", "content": response_text})
 
             # 5. Intercept and Apply Edits to Disk
@@ -158,19 +251,33 @@ def main():
                     else:
                         console.print(f"  [bold red]✗[/bold red] {path}: {msg}")
 
-                # 6. Auto-Commit Clean Modifications to Git
+                # 6. Agentic Self-Healing Feedback Loop
                 if successful_files:
-                    console.print("[dim]Generating commit message and auto-committing...[/dim]")
-                    committed, commit_sha, commit_msg = auto_commit(
-                        root=ctx.root,
-                        files=successful_files,
+                    console.print("[dim]Running linter and tests verification...[/dim]")
+                    is_clean = verify_and_heal(
+                        successful_files=successful_files,
+                        ctx=ctx,
+                        chat_history=chat_history,
+                        max_attempts=3,
                     )
-                    if committed:
-                        console.print(
-                            f"  [bold green]Commit {commit_sha}:[/bold green] [dim]{commit_msg}[/dim]"
+
+                    # 7. Auto-Commit only if clean
+                    if is_clean:
+                        console.print("[dim]Generating commit message and auto-committing...[/dim]")
+                        committed, commit_sha, commit_msg = auto_commit(
+                            root=ctx.root,
+                            files=successful_files,
                         )
+                        if committed:
+                            console.print(
+                                f"  [bold green]Commit {commit_sha}:[/bold green] [dim]{commit_msg}[/dim]"
+                            )
+                        else:
+                            console.print(f"  [dim yellow]Commit skipped: {commit_msg}[/dim yellow]")
                     else:
-                        console.print(f"  [dim yellow]Commit skipped: {commit_msg}[/dim yellow]")
+                        console.print(
+                            "[bold yellow]Skipping auto-commit: Unresolved errors remain.[/bold yellow]"
+                        )
 
         except EOFError:
             console.print("\n[yellow]Goodbye![/yellow]")
@@ -180,6 +287,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
     main()
