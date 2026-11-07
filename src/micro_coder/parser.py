@@ -5,6 +5,7 @@ from dataclasses import dataclass
 @dataclass
 class EditBlock:
     """Represents a single atomic edit operation on a target file."""
+
     filepath: str
     search_text: str
     replace_text: str

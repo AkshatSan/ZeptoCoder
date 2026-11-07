@@ -195,7 +195,10 @@ if __name__ == "__main__":
             )
         ]
         results_bad = apply_blocks_to_disk(bad_blocks, root=scratch_dir)
-        print("Disk Patch Test 2 (Safety Check):", "PASSED" if not results_bad[0][1] else "FAILED")
+        print(
+            "Disk Patch Test 2 (Safety Check):",
+            "PASSED" if not results_bad[0][1] else "FAILED",
+        )
 
     finally:
         # Cleanup scratch folder

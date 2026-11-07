@@ -25,7 +25,9 @@ class TestResult:
         trimmed_output = self.output.strip()
         if len(trimmed_output) > max_chars:
             # Preserve the tail where pytest prints the summary and assertion tracebacks
-            trimmed_output = f"... [output truncated] ...\n{trimmed_output[-max_chars:]}"
+            trimmed_output = (
+                f"... [output truncated] ...\n{trimmed_output[-max_chars:]}"
+            )
 
         return (
             f"Pytest Execution Failed (Exit Code {self.returncode})\n"

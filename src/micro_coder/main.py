@@ -1,6 +1,7 @@
 import sys
 from rich.console import Console
 from rich.table import Table
+from rich.prompt import Confirm
 
 from micro_coder.llm import stream_chat
 from micro_coder.context import ContextManager
@@ -8,7 +9,7 @@ from micro_coder.prompt import SYSTEM_PROMPT, format_self_healing_prompt
 from micro_coder.parser import parse_edit_blocks
 from micro_coder.patcher import apply_blocks_to_disk
 from micro_coder.terminal import TerminalSession
-from micro_coder.repo import auto_commit, undo_last_commit, display_diff
+from micro_coder.repo import auto_commit, undo_last_commit, display_diff, revert_files
 from micro_coder.linter import lint_files
 from micro_coder.tester import run_tests, find_test_files_for
 
@@ -18,7 +19,9 @@ console = Console()
 def display_tokens(ctx: ContextManager, messages: list[dict]):
     """Renders a clean token consumption table using Rich."""
     breakdown = ctx.get_tokens_breakdown(messages)
-    table = Table(title="Token Usage Breakdown", show_header=True, header_style="bold cyan")
+    table = Table(
+        title="Token Usage Breakdown", show_header=True, header_style="bold cyan"
+    )
     table.add_column("Context Item", style="dim")
     table.add_column("Tokens", justify="right")
 
@@ -54,7 +57,9 @@ def verify_and_heal(
 
     # Fast path: Edits are clean on the very first try
     if not lint_errors and test_result.passed:
-        console.print("[bold green]✓ Verification passed: 0 lint errors, tests passing.[/bold green]")
+        console.print(
+            "[bold green]✓ Verification passed: 0 lint errors, tests passing.[/bold green]"
+        )
         return True
 
     # Feedback loop: Iteratively ask the model to self-heal
@@ -88,7 +93,9 @@ def verify_and_heal(
         healing_payload.extend(chat_history)
         healing_payload.append({"role": "user", "content": healing_prompt})
 
-        console.print(f"[bold magenta]micro-coder (healing #{attempt}) > [/bold magenta]", end="")
+        console.print(
+            f"[bold magenta]micro-coder (healing #{attempt}) > [/bold magenta]", end=""
+        )
         full_response = []
         for token in stream_chat(messages=healing_payload):
             print(token, end="", flush=True)
@@ -102,7 +109,9 @@ def verify_and_heal(
         # Apply corrective edit blocks to disk
         new_blocks = parse_edit_blocks(healing_text)
         if not new_blocks:
-            console.print("[yellow]No SEARCH/REPLACE blocks found in healing response.[/yellow]")
+            console.print(
+                "[yellow]No SEARCH/REPLACE blocks found in healing response.[/yellow]"
+            )
             break
 
         results = apply_blocks_to_disk(new_blocks, root=ctx.root)
@@ -121,10 +130,14 @@ def verify_and_heal(
         test_result = run_tests(targets=test_targets, root=ctx.root)
 
         if not lint_errors and test_result.passed:
-            console.print(f"[bold green]✓ Self-healing succeeded on attempt {attempt}![/bold green]")
+            console.print(
+                f"[bold green]✓ Self-healing succeeded on attempt {attempt}![/bold green]"
+            )
             return True
 
-    console.print(f"[bold red]✗ Self-healing exhausted ({max_attempts} attempts).[/bold red]")
+    console.print(
+        f"[bold red]✗ Self-healing exhausted ({max_attempts} attempts).[/bold red]"
+    )
     return False
 
 
@@ -132,7 +145,9 @@ def main():
     ctx = ContextManager()
     console.print("[bold green]micro-coder[/bold green] [dim](v0.1.0)[/dim] - Ready.")
     console.print(f"[dim]Project Root: {ctx.root}[/dim]")
-    console.print("[dim]Commands: /add, /drop, /tokens, /diff, /undo, /clear, /exit, /help[/dim]\n")
+    console.print(
+        "[dim]Commands: /add, /drop, /tokens, /diff, /undo, /clear, /exit, /help[/dim]\n"
+    )
 
     # Initialize professional prompt_toolkit terminal session with autocompletion & history
     terminal = TerminalSession(
@@ -198,17 +213,31 @@ def main():
 
             elif user_input.lower() == "/clear":
                 chat_history.clear()
-                console.print("[yellow]Chat history cleared (active files kept in context).[/yellow]")
+                console.print(
+                    "[yellow]Chat history cleared (active files kept in context).[/yellow]"
+                )
                 continue
 
             elif user_input.lower() == "/help":
                 console.print("[bold cyan]Available Commands:[/bold cyan]")
-                console.print("  [bold]/add <path>[/bold]   - Add a file to active context (with tab-completion)")
-                console.print("  [bold]/drop <path>[/bold]  - Remove a file from context (shows active files)")
-                console.print("  [bold]/tokens[/bold]       - View token budget breakdown")
-                console.print("  [bold]/diff[/bold]         - View colorized git diff (or /diff commit)")
-                console.print("  [bold]/undo[/bold]         - Roll back the last AI commit and restore files")
-                console.print("  [bold]/clear[/bold]        - Reset conversation memory")
+                console.print(
+                    "  [bold]/add <path>[/bold]   - Add a file to active context (with tab-completion)"
+                )
+                console.print(
+                    "  [bold]/drop <path>[/bold]  - Remove a file from context (shows active files)"
+                )
+                console.print(
+                    "  [bold]/tokens[/bold]       - View token budget breakdown"
+                )
+                console.print(
+                    "  [bold]/diff[/bold]         - View colorized git diff (or /diff commit)"
+                )
+                console.print(
+                    "  [bold]/undo[/bold]         - Roll back the last AI commit and restore files"
+                )
+                console.print(
+                    "  [bold]/clear[/bold]        - Reset conversation memory"
+                )
                 console.print("  [bold]/exit[/bold]         - Exit the assistant")
                 continue
 
@@ -240,7 +269,9 @@ def main():
             # 5. Intercept and Apply Edits to Disk
             blocks = parse_edit_blocks(response_text)
             if blocks:
-                console.print(f"[bold cyan]Detected {len(blocks)} edit block(s). Applying to disk...[/bold cyan]")
+                console.print(
+                    f"[bold cyan]Detected {len(blocks)} edit block(s). Applying to disk...[/bold cyan]"
+                )
                 results = apply_blocks_to_disk(blocks, root=ctx.root)
                 successful_files = []
 
@@ -263,7 +294,9 @@ def main():
 
                     # 7. Auto-Commit only if clean
                     if is_clean:
-                        console.print("[dim]Generating commit message and auto-committing...[/dim]")
+                        console.print(
+                            "[dim]Generating commit message and auto-committing...[/dim]"
+                        )
                         committed, commit_sha, commit_msg = auto_commit(
                             root=ctx.root,
                             files=successful_files,
@@ -273,11 +306,29 @@ def main():
                                 f"  [bold green]Commit {commit_sha}:[/bold green] [dim]{commit_msg}[/dim]"
                             )
                         else:
-                            console.print(f"  [dim yellow]Commit skipped: {commit_msg}[/dim yellow]")
+                            console.print(
+                                f"  [dim yellow]Commit skipped: {commit_msg}[/dim yellow]"
+                            )
                     else:
                         console.print(
-                            "[bold yellow]Skipping auto-commit: Unresolved errors remain.[/bold yellow]"
+                            "\n[bold red]Self-healing failed to resolve all issues after 3 attempts.[/bold red]"
                         )
+                        should_revert = Confirm.ask(
+                            "[bold yellow]Revert modified files to keep repository clean?[/bold yellow]",
+                            default=True,
+                        )
+                        if should_revert:
+                            ok, msg = revert_files(
+                                files=successful_files, root=ctx.root
+                            )
+                            if ok:
+                                console.print(f"[bold green]✓ {msg}[/bold green]")
+                            else:
+                                console.print(f"[bold red]✗ {msg}[/bold red]")
+                        else:
+                            console.print(
+                                "[dim]Kept changes on disk for manual debugging.[/dim]"
+                            )
 
         except EOFError:
             console.print("\n[yellow]Goodbye![/yellow]")

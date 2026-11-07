@@ -42,7 +42,9 @@ class ContextManager:
         Returns (success: bool, message: str).
         """
         raw_path = Path(filepath)
-        resolved = (raw_path if raw_path.is_absolute() else (self.root / raw_path)).resolve()
+        resolved = (
+            raw_path if raw_path.is_absolute() else (self.root / raw_path)
+        ).resolve()
         print(resolved)
 
         if not resolved.exists():
@@ -68,7 +70,9 @@ class ContextManager:
         Returns (success: bool, message: str).
         """
         raw_path = Path(filepath)
-        resolved = (raw_path if raw_path.is_absolute() else (self.root / raw_path)).resolve()
+        resolved = (
+            raw_path if raw_path.is_absolute() else (self.root / raw_path)
+        ).resolve()
 
         try:
             rel_path = resolved.relative_to(self.root)

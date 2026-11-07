@@ -54,7 +54,9 @@ def get_repo_files(root: Path) -> list[str]:
         }
         results: list[str] = []
         for p in root.rglob("*"):
-            if p.is_file() and not any(part in ignored or part.startswith(".") for part in p.parts):
+            if p.is_file() and not any(
+                part in ignored or part.startswith(".") for part in p.parts
+            ):
                 try:
                     results.append(str(p.relative_to(root)))
                 except ValueError:
@@ -117,7 +119,10 @@ class MicroCoderCompleter(Completer):
             repo_files = get_repo_files(self.root)
             for filepath in repo_files:
                 # Matches either from start of path or substring match on filename
-                if filepath.lower().startswith(lower_arg) or lower_arg in filepath.lower():
+                if (
+                    filepath.lower().startswith(lower_arg)
+                    or lower_arg in filepath.lower()
+                ):
                     yield Completion(
                         text=filepath,
                         start_position=-len(arg),
@@ -126,10 +131,15 @@ class MicroCoderCompleter(Completer):
                     )
 
         elif cmd == "/drop":
-            active_files = list(self.get_active_files()) if self.get_active_files else []
+            active_files = (
+                list(self.get_active_files()) if self.get_active_files else []
+            )
             for filepath in active_files:
                 filepath_str = str(filepath)
-                if filepath_str.lower().startswith(lower_arg) or lower_arg in filepath_str.lower():
+                if (
+                    filepath_str.lower().startswith(lower_arg)
+                    or lower_arg in filepath_str.lower()
+                ):
                     yield Completion(
                         text=filepath_str,
                         start_position=-len(arg),
@@ -143,10 +153,14 @@ if __name__ == "__main__":
     from prompt_toolkit.formatted_text import HTML
 
     print("=== Testing MicroCoderCompleter ===")
-    print("Simulated active files in context: ['src/micro_coder/main.py', 'src/micro_coder/context.py']")
+    print(
+        "Simulated active files in context: ['src/micro_coder/main.py', 'src/micro_coder/context.py']"
+    )
     print("\nTry testing:")
     print("  1. Type '/' and press Tab to view slash commands.")
-    print("  2. Type '/add ' and press Tab (or start typing a filename) to autocomplete files.")
+    print(
+        "  2. Type '/add ' and press Tab (or start typing a filename) to autocomplete files."
+    )
     print("  3. Type '/drop ' and press Tab to see only active files.")
     print("Press Ctrl+C or type /exit to finish the test.\n")
 
@@ -167,4 +181,3 @@ if __name__ == "__main__":
         except (KeyboardInterrupt, EOFError):
             print("\nExiting test.")
             break
-

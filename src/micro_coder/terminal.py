@@ -93,7 +93,9 @@ if __name__ == "__main__":
     print("\nInteractive features to test:")
     print("  1. Up/Down Arrow Keys: Navigates past command history.")
     print("  2. Type '/': Autocomplete menu appears automatically.")
-    print("  3. Escape + Enter (or Alt + Enter): Inserts a newline for multiline prompts.")
+    print(
+        "  3. Escape + Enter (or Alt + Enter): Inserts a newline for multiline prompts."
+    )
     print("  4. Enter: Submits the message.")
     print("  5. Ctrl + C: Cancels the current line cleanly.")
     print("  6. Type '/exit' or press Ctrl + D to quit.\n")
@@ -119,4 +121,3 @@ if __name__ == "__main__":
         except EOFError:
             print("\nGoodbye! (EOF)")
             break
-

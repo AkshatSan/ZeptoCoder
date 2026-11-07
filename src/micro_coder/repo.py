@@ -96,7 +96,10 @@ Git diff:
 {truncated_diff}
 """
     messages = [
-        {"role": "system", "content": "You are an automated Git commit message generator."},
+        {
+            "role": "system",
+            "content": "You are an automated Git commit message generator.",
+        },
         {"role": "user", "content": prompt},
     ]
 
@@ -271,7 +274,9 @@ def get_diff(root: Path | None = None, target: str | None = None) -> tuple[str, 
                     title = f"Commit {repo.head.commit.hexsha[:7]}: {repo.head.commit.message.splitlines()[0]}"
                     return commit_diff, title
                 else:
-                    return repo.git.show("HEAD", "--format=", "--stat", "-p"), f"Initial Commit ({repo.head.commit.hexsha[:7]})"
+                    return repo.git.show(
+                        "HEAD", "--format=", "--stat", "-p"
+                    ), f"Initial Commit ({repo.head.commit.hexsha[:7]})"
             except Exception as e:
                 return "", f"Could not inspect last commit: {e}"
         return "", "No commits found on HEAD."
@@ -279,7 +284,10 @@ def get_diff(root: Path | None = None, target: str | None = None) -> tuple[str, 
     # Default: 1. Uncommitted working tree changes
     unstaged_diff = repo.git.diff()
     if unstaged_diff.strip():
-        return unstaged_diff, "Uncommitted Working Tree Changes (use '/diff commit' to view last commit)"
+        return (
+            unstaged_diff,
+            "Uncommitted Working Tree Changes (use '/diff commit' to view last commit)",
+        )
 
     # 2. Check for staged changes
     staged_diff = repo.git.diff("--cached")
@@ -302,7 +310,11 @@ def get_diff(root: Path | None = None, target: str | None = None) -> tuple[str, 
     return "", "Working tree is clean. No diff available."
 
 
-def display_diff(root: Path | None = None, target: str | None = None, console: "Console | None" = None) -> None:
+def display_diff(
+    root: Path | None = None,
+    target: str | None = None,
+    console: "Console | None" = None,
+) -> None:
     """
     Displays the current Git diff in the terminal with Rich syntax coloring.
     """
@@ -317,8 +329,58 @@ def display_diff(root: Path | None = None, target: str | None = None, console: "
         out_console.print(f"[dim]{title}[/dim]")
         return
 
-    syntax = Syntax(diff_text, "diff", theme="monokai", line_numbers=True, word_wrap=True)
-    out_console.print(Panel(syntax, title=f"[bold cyan]{title}[/bold cyan]", border_style="dim"))
+    syntax = Syntax(
+        diff_text, "diff", theme="monokai", line_numbers=True, word_wrap=True
+    )
+    out_console.print(
+        Panel(syntax, title=f"[bold cyan]{title}[/bold cyan]", border_style="dim")
+    )
+
+
+def revert_files(files: list[str], root: Path | None = None) -> tuple[bool, str]:
+    """
+    Safely reverts uncommitted changes made to the specified files in the working tree:
+    - Tracked modified files are restored to HEAD via 'git checkout HEAD -- <file>'.
+    - Newly created untracked files are unlinked from disk.
+
+    Returns:
+        (success: bool, message: str)
+    """
+    repo_root = root or find_git_root()
+    if not repo_root:
+        return False, "Not inside a Git repository."
+
+    repo = git.Repo(repo_root)
+    reverted: list[str] = []
+    errors: list[str] = []
+    untracked_set = set(repo.untracked_files)
+
+    for file_str in files:
+        p = Path(file_str)
+        try:
+            rel_path = str(p.relative_to(repo_root)) if p.is_absolute() else str(p)
+        except ValueError:
+            rel_path = str(p)
+
+        full_path = (repo_root / rel_path).resolve()
+
+        try:
+            if rel_path in untracked_set:
+                if full_path.is_file():
+                    full_path.unlink()
+                reverted.append(rel_path)
+            else:
+                repo.git.checkout("HEAD", "--", rel_path)
+                reverted.append(rel_path)
+        except Exception as e:
+            errors.append(f"{rel_path}: {e}")
+
+    if errors:
+        return (
+            False,
+            f"Reverted {len(reverted)} file(s), but encountered errors: {', '.join(errors)}",
+        )
+    return True, f"Reverted {len(reverted)} file(s) back to original state."
 
 
 if __name__ == "__main__":
@@ -336,4 +398,3 @@ if __name__ == "__main__":
         success, msg = undo_last_commit(root)
         print(f"  -> Result : {'Success' if success else 'Blocked safely'}")
         print(f"  -> Message: {msg}")
-        
